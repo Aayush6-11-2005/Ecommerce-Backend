@@ -38,12 +38,12 @@ public class OrderService {
 
     // Create order from cart
     @Transactional
-    public OrderResponse createOrder(Long userId) {
+    public OrderResponse createOrder(String email) {
 
-        User user = userRepository.findById(userId)
+        User user = userRepository.findByEmail(email)
                 .orElseThrow(() ->
                         new RuntimeException("User not found"));
-
+        Long userId = user.getId();
         Cart cart = cartRepository.findByUserId(userId)
                 .orElseThrow(() ->
                         new RuntimeException("Cart not found"));
@@ -116,23 +116,40 @@ public class OrderService {
     }
 
     // Get order by ID
-    public OrderResponse getOrder(Long orderId) {
+    // Get order by ID
+    public OrderResponse getOrder(
+            String email,
+            Long orderId
+    ) {
+
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() ->
+                        new RuntimeException("User not found")
+                );
 
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() ->
-                        new RuntimeException("Order not found"));
+                        new RuntimeException("Order not found")
+                );
+
+        if (!order.getUser().getId().equals(user.getId())) {
+            throw new RuntimeException(
+                    "You cannot access this order"
+            );
+        }
 
         return mapToResponse(order);
     }
 
     // Get all orders of user
-    public List<OrderResponse> getUserOrders(Long userId) {
+    public List<OrderResponse> getUserOrders(String email) {
 
-        if (!userRepository.existsById(userId)) {
-            throw new RuntimeException("User not found");
-        }
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() ->
+                        new RuntimeException("User not found")
+                );
 
-        return orderRepository.findByUserId(userId)
+        return orderRepository.findByUserId(user.getId())
                 .stream()
                 .map(this::mapToResponse)
                 .toList();
@@ -154,13 +171,28 @@ public class OrderService {
         return mapToResponse(updatedOrder);
     }
 
-    // Cancel order
+
     @Transactional
-    public OrderResponse cancelOrder(Long orderId) {
+    public OrderResponse cancelOrder(
+            String email,
+            Long orderId
+    ) {
+
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() ->
+                        new RuntimeException("User not found")
+                );
 
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() ->
-                        new RuntimeException("Order not found"));
+                        new RuntimeException("Order not found")
+                );
+
+        if (!order.getUser().getId().equals(user.getId())) {
+            throw new RuntimeException(
+                    "You cannot cancel this order"
+            );
+        }
 
         if (order.getStatus() == OrderStatus.DELIVERED) {
             throw new RuntimeException(
@@ -192,7 +224,6 @@ public class OrderService {
 
         return mapToResponse(updatedOrder);
     }
-
     // Entity -> DTO
     private OrderResponse mapToResponse(Order order) {
 

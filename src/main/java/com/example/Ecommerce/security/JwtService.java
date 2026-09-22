@@ -3,6 +3,7 @@ package com.example.Ecommerce.security;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Service;
 
@@ -16,15 +17,16 @@ import java.util.function.Function;
 @Service
 public class JwtService {
 
-    // Use a long random secret in production.
-    private static final String SECRET_KEY =
-            "my-super-secret-key-for-ecommerce-jwt-authentication-123456";
+    @Value("${jwt.secret}")
+    private String secret;
 
-    private final long jwtExpiration = 1000 * 60 * 60; // 1 hour
+    @Value("${jwt.expiration}")
+    private long expiration;
 
-    private SecretKey getSignInKey() {
+    private SecretKey getSigningKey() {
+
         return Keys.hmacShaKeyFor(
-                SECRET_KEY.getBytes(StandardCharsets.UTF_8)
+                secret.getBytes(StandardCharsets.UTF_8)
         );
     }
 
@@ -37,9 +39,12 @@ public class JwtService {
                 .subject(userDetails.getUsername())
                 .issuedAt(new Date())
                 .expiration(
-                        new Date(System.currentTimeMillis() + jwtExpiration)
+                        new Date(
+                                System.currentTimeMillis()
+                                        + expiration
+                        )
                 )
-                .signWith(getSignInKey())
+                .signWith(getSigningKey())
                 .compact();
     }
 
@@ -71,7 +76,7 @@ public class JwtService {
     private Claims extractAllClaims(String token) {
 
         return Jwts.parser()
-                .verifyWith(getSignInKey())
+                .verifyWith(getSigningKey())
                 .build()
                 .parseSignedClaims(token)
                 .getPayload();
@@ -87,9 +92,11 @@ public class JwtService {
             String token,
             UserDetails userDetails) {
 
-        String username = extractUsername(token);
+        String username =
+                extractUsername(token);
 
-        return username.equals(userDetails.getUsername())
-                && !isTokenExpired(token);
+        return username.equals(
+                userDetails.getUsername()
+        ) && !isTokenExpired(token);
     }
 }

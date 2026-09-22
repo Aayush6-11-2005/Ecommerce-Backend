@@ -1,12 +1,8 @@
 package com.example.Ecommerce.controller;
 
-import com.example.Ecommerce.dto.AuthResponse;
-import com.example.Ecommerce.dto.LoginRequest;
-import com.example.Ecommerce.dto.RegisterRequest;
+import com.example.Ecommerce.dto.*;
 import com.example.Ecommerce.services.AuthService;
-
 import jakarta.validation.Valid;
-
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -35,6 +31,17 @@ public class AuthController {
 
         return ResponseEntity.ok(
                 authService.login(request)
+        );
+    }
+
+    @PostMapping("/refresh")
+    public ResponseEntity<RefreshTokenResponse> refresh(
+            @Valid @RequestBody RefreshTokenRequest request) {
+
+        return ResponseEntity.ok(
+                authService.refreshAccessToken(
+                        request.getRefreshToken()
+                )
         );
     }
 }

@@ -17,10 +17,11 @@ public class SecurityConfig {
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
 
     public SecurityConfig(
-            JwtAuthenticationFilter jwtAuthenticationFilter) {
-
+            JwtAuthenticationFilter jwtAuthenticationFilter
+    ) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
     }
+
 
     @Bean
     public PasswordEncoder passwordEncoder() {
@@ -28,17 +29,20 @@ public class SecurityConfig {
         return new BCryptPasswordEncoder();
     }
 
+
     @Bean
     public AuthenticationManager authenticationManager(
-            AuthenticationConfiguration configuration)
-            throws Exception {
+            AuthenticationConfiguration configuration
+    ) throws Exception {
 
         return configuration.getAuthenticationManager();
     }
 
+
     @Bean
     public SecurityFilterChain securityFilterChain(
-            HttpSecurity http) throws Exception {
+            HttpSecurity http
+    ) throws Exception {
 
         http
                 .csrf(csrf -> csrf.disable())
@@ -51,15 +55,65 @@ public class SecurityConfig {
 
                 .authorizeHttpRequests(auth -> auth
 
+                        // Public authentication APIs
                         .requestMatchers(
                                 "/api/auth/**"
                         ).permitAll()
 
+                        // Public product APIs
                         .requestMatchers(
-                                "/api/products/**",
+                                org.springframework.http.HttpMethod.GET,
+                                "/api/products/**"
+                        ).permitAll()
+
+                        // Public category APIs
+                        .requestMatchers(
+                                org.springframework.http.HttpMethod.GET,
                                 "/api/categories/**"
                         ).permitAll()
 
+                        // Admin product operations
+                        .requestMatchers(
+                                org.springframework.http.HttpMethod.POST,
+                                "/api/products/**"
+                        ).hasRole("ADMIN")
+
+                        .requestMatchers(
+                                org.springframework.http.HttpMethod.PUT,
+                                "/api/products/**"
+                        ).hasRole("ADMIN")
+
+                        .requestMatchers(
+                                org.springframework.http.HttpMethod.DELETE,
+                                "/api/products/**"
+                        ).hasRole("ADMIN")
+
+
+                        // Admin category operations
+                        .requestMatchers(
+                                org.springframework.http.HttpMethod.POST,
+                                "/api/categories/**"
+                        ).hasRole("ADMIN")
+
+                        .requestMatchers(
+                                org.springframework.http.HttpMethod.PUT,
+                                "/api/categories/**"
+                        ).hasRole("ADMIN")
+
+                        .requestMatchers(
+                                org.springframework.http.HttpMethod.DELETE,
+                                "/api/categories/**"
+                        ).hasRole("ADMIN")
+
+
+                        // Admin order status update
+                        .requestMatchers(
+                                org.springframework.http.HttpMethod.PUT,
+                                "/api/orders/*/status"
+                        ).hasRole("ADMIN")
+
+
+                        // Everything else requires login
                         .anyRequest().authenticated()
                 )
 

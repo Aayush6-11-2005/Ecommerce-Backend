@@ -1,10 +1,8 @@
 package com.example.Ecommerce.dto;
 
-
-import com.example.Ecommerce.enums.Role;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -20,7 +18,9 @@ public class RegisterRequest {
     private String email;
 
     @NotBlank(message = "Password is required")
+    @Pattern(
+            regexp = "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[@$!%*?&])[A-Za-z\\d@$!%*?&]{8,}$",
+            message = "Password must contain at least 8 characters, one uppercase, one lowercase, one number and one special character"
+    )
     private String password;
-
-
 }

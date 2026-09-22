@@ -1,0 +1,5 @@
+com\example\Ecommerce\controller\CategoryController.class
+com\example\Ecommerce\controller\CartController.class
+com\example\Ecommerce\controller\AuthController.class
+com\example\Ecommerce\controller\ProductController.class
+com\example\Ecommerce\controller\OrderController.class

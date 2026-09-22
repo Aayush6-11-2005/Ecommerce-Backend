@@ -5,6 +5,7 @@ import com.example.Ecommerce.dto.OrderStatusRequest;
 import com.example.Ecommerce.services.OrderService;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -19,41 +20,56 @@ public class OrderController {
         this.orderService = orderService;
     }
 
-    // Create order from cart
-    @PostMapping("/user/{userId}")
+
+
+    @PostMapping
     public ResponseEntity<OrderResponse> createOrder(
-            @PathVariable Long userId) {
+            Authentication authentication
+    ) {
 
         return ResponseEntity.ok(
-                orderService.createOrder(userId)
+                orderService.createOrder(
+                        authentication.getName()
+                )
         );
     }
 
-    // Get order
+
+
     @GetMapping("/{orderId}")
     public ResponseEntity<OrderResponse> getOrder(
-            @PathVariable Long orderId) {
+            Authentication authentication,
+            @PathVariable Long orderId
+    ) {
 
         return ResponseEntity.ok(
-                orderService.getOrder(orderId)
+                orderService.getOrder(
+                        authentication.getName(),
+                        orderId
+                )
         );
     }
 
-    // Get user's orders
-    @GetMapping("/user/{userId}")
+
+
+    @GetMapping
     public ResponseEntity<List<OrderResponse>> getUserOrders(
-            @PathVariable Long userId) {
+            Authentication authentication
+    ) {
 
         return ResponseEntity.ok(
-                orderService.getUserOrders(userId)
+                orderService.getUserOrders(
+                        authentication.getName()
+                )
         );
     }
 
-    // Update status
+
     @PutMapping("/{orderId}/status")
     public ResponseEntity<OrderResponse> updateStatus(
             @PathVariable Long orderId,
-            @Valid @RequestBody OrderStatusRequest request) {
+            @Valid @RequestBody OrderStatusRequest request
+    ) {
 
         return ResponseEntity.ok(
                 orderService.updateStatus(
@@ -63,13 +79,19 @@ public class OrderController {
         );
     }
 
-    // Cancel order
+
+
     @PutMapping("/{orderId}/cancel")
     public ResponseEntity<OrderResponse> cancelOrder(
-            @PathVariable Long orderId) {
+            Authentication authentication,
+            @PathVariable Long orderId
+    ) {
 
         return ResponseEntity.ok(
-                orderService.cancelOrder(orderId)
+                orderService.cancelOrder(
+                        authentication.getName(),
+                        orderId
+                )
         );
     }
 }
