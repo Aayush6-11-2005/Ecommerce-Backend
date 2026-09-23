@@ -1,6 +1,10 @@
 package com.example.Ecommerce.services;
 
-import com.example.Ecommerce.dto.*;
+import com.example.Ecommerce.dto.AuthResponse;
+import com.example.Ecommerce.dto.LoginRequest;
+import com.example.Ecommerce.dto.RefreshTokenResponse;
+import com.example.Ecommerce.dto.RegisterRequest;
+import com.example.Ecommerce.dto.UserResponse;
 import com.example.Ecommerce.entity.RefreshToken;
 import com.example.Ecommerce.entity.User;
 import com.example.Ecommerce.enums.Role;
@@ -9,12 +13,12 @@ import com.example.Ecommerce.exception.ResourceNotFoundException;
 import com.example.Ecommerce.repository.UserRepository;
 import com.example.Ecommerce.security.CustomUserDetails;
 import com.example.Ecommerce.security.JwtService;
-
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class AuthService {
@@ -24,12 +28,13 @@ public class AuthService {
     private final AuthenticationManager authenticationManager;
     private final JwtService jwtService;
     private final RefreshTokenService refreshTokenService;
+
     public AuthService(
             UserRepository userRepository,
             PasswordEncoder passwordEncoder,
             AuthenticationManager authenticationManager,
             JwtService jwtService,
-            RefreshTokenService refreshTokenService ) {
+            RefreshTokenService refreshTokenService) {
 
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
@@ -38,7 +43,9 @@ public class AuthService {
         this.refreshTokenService = refreshTokenService;
     }
 
+    @Transactional
     public AuthResponse register(RegisterRequest request) {
+
         if (userRepository.existsByEmail(request.getEmail())) {
             throw new BadRequestException("Email already registered");
         }
@@ -47,11 +54,9 @@ public class AuthService {
 
         user.setName(request.getName());
         user.setEmail(request.getEmail());
-
         user.setPassword(
                 passwordEncoder.encode(request.getPassword())
         );
-
         user.setRole(Role.USER);
 
         User savedUser = userRepository.save(user);
@@ -61,16 +66,17 @@ public class AuthService {
                         new CustomUserDetails(savedUser)
                 );
 
-        RefreshToken refreshToken =
+        String refreshToken =
                 refreshTokenService.createRefreshToken(savedUser);
 
         return new AuthResponse(
                 accessToken,
-                refreshToken.getToken(),
+                refreshToken,
                 mapToResponse(savedUser)
         );
     }
 
+    @Transactional
     public AuthResponse login(LoginRequest request) {
 
         Authentication authentication =
@@ -84,42 +90,59 @@ public class AuthService {
         CustomUserDetails userDetails =
                 (CustomUserDetails) authentication.getPrincipal();
 
-        User user = userRepository.findByEmail(
+        User savedUser =
+                userRepository.findByEmail(
                         userDetails.getUsername()
-                )
-                .orElseThrow(() ->
-                        new ResourceNotFoundException("User not found")
+                ).orElseThrow(() ->
+                        new ResourceNotFoundException(
+                                "User not found"
+                        )
                 );
 
         String accessToken =
                 jwtService.generateToken(userDetails);
 
-        RefreshToken refreshToken =
-                refreshTokenService.createRefreshToken(user);
+        String refreshToken =
+                refreshTokenService.createRefreshToken(savedUser);
 
         return new AuthResponse(
                 accessToken,
-                refreshToken.getToken(),
-                mapToResponse(user)
+                refreshToken,
+                mapToResponse(savedUser)
         );
     }
+
+    @Transactional
     public RefreshTokenResponse refreshAccessToken(
             String refreshTokenValue) {
 
-        RefreshToken refreshToken =
-                refreshTokenService.findByToken(refreshTokenValue);
+        RefreshToken oldRefreshToken =
+                refreshTokenService.findByToken(
+                        refreshTokenValue
+                );
 
-        refreshTokenService.verifyExpiration(refreshToken);
+        refreshTokenService.verifyExpiration(
+                oldRefreshToken
+        );
 
-        User user = refreshToken.getUser();
+        User user = oldRefreshToken.getUser();
 
         String accessToken =
                 jwtService.generateToken(
                         new CustomUserDetails(user)
                 );
 
-        return new RefreshTokenResponse(accessToken);
+        String newRefreshToken =
+                refreshTokenService.rotateRefreshToken(
+                        oldRefreshToken
+                );
+
+        return new RefreshTokenResponse(
+                accessToken,
+                newRefreshToken
+        );
     }
+
     private UserResponse mapToResponse(User user) {
 
         UserResponse response = new UserResponse();

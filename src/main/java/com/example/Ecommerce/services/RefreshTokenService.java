@@ -3,6 +3,7 @@ package com.example.Ecommerce.services;
 import com.example.Ecommerce.entity.RefreshToken;
 import com.example.Ecommerce.entity.User;
 import com.example.Ecommerce.exception.BadRequestException;
+import com.example.Ecommerce.exception.ResourceNotFoundException;
 import com.example.Ecommerce.repository.RefreshTokenRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -12,7 +13,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
-import java.util.HexFormat;
+import java.util.Base64;
 import java.util.UUID;
 
 @Service
@@ -21,7 +22,7 @@ public class RefreshTokenService {
     private final RefreshTokenRepository refreshTokenRepository;
 
     @Value("${jwt.refresh-expiration}")
-    private long refreshExpiration;
+    private long refreshTokenDuration;
 
     public RefreshTokenService(
             RefreshTokenRepository refreshTokenRepository) {
@@ -32,39 +33,39 @@ public class RefreshTokenService {
     @Transactional
     public String createRefreshToken(User user) {
 
-        refreshTokenRepository.deleteByUser(user);
-
         String rawToken = UUID.randomUUID().toString();
 
         RefreshToken refreshToken = new RefreshToken();
 
+        refreshToken.setUser(user);
         refreshToken.setTokenHash(hashToken(rawToken));
 
         refreshToken.setExpiryDate(
                 LocalDateTime.now()
-                        .plusSeconds(refreshExpiration / 1000)
+                        .plusSeconds(refreshTokenDuration / 1000)
         );
-
-        refreshToken.setUser(user);
 
         refreshTokenRepository.save(refreshToken);
 
         return rawToken;
     }
 
-    @Transactional
-    public RefreshToken verifyAndGet(String rawToken) {
+    public RefreshToken findByToken(String rawToken) {
 
         String tokenHash = hashToken(rawToken);
 
-        RefreshToken refreshToken =
-                refreshTokenRepository
-                        .findByTokenHash(tokenHash)
-                        .orElseThrow(() ->
-                                new BadRequestException(
-                                        "Invalid refresh token"
-                                )
-                        );
+        return refreshTokenRepository
+                .findByTokenHash(tokenHash)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException(
+                                "Invalid refresh token"
+                        )
+                );
+    }
+
+    @Transactional
+    public RefreshToken verifyExpiration(
+            RefreshToken refreshToken) {
 
         if (refreshToken.getExpiryDate()
                 .isBefore(LocalDateTime.now())) {
@@ -102,7 +103,8 @@ public class RefreshTokenService {
                             token.getBytes(StandardCharsets.UTF_8)
                     );
 
-            return HexFormat.of().formatHex(hash);
+            return Base64.getEncoder()
+                    .encodeToString(hash);
 
         } catch (NoSuchAlgorithmException e) {
 

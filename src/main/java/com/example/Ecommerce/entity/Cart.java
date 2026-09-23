@@ -1,12 +1,12 @@
 package com.example.Ecommerce.entity;
 
 import jakarta.persistence.*;
-
-import java.util.ArrayList;
-import java.util.List;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+
+import java.util.ArrayList;
+import java.util.List;
 
 @Getter
 @Setter
@@ -20,7 +20,11 @@ public class Cart {
     private Long id;
 
     @OneToOne
-    @JoinColumn(name = "user_id")
+    @JoinColumn(
+            name = "user_id",
+            nullable = false,
+            unique = true
+    )
     private User user;
 
     @OneToMany(
@@ -29,5 +33,4 @@ public class Cart {
             orphanRemoval = true
     )
     private List<CartItem> items = new ArrayList<>();
-
- }
+}

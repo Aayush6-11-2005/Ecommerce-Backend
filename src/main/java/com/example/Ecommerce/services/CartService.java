@@ -13,7 +13,11 @@ import com.example.Ecommerce.repository.CartItemRepository;
 import com.example.Ecommerce.repository.CartRepository;
 import com.example.Ecommerce.repository.ProductRepository;
 import com.example.Ecommerce.repository.UserRepository;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.CachePut;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -31,140 +35,132 @@ public class CartService {
             CartRepository cartRepository,
             CartItemRepository cartItemRepository,
             ProductRepository productRepository,
-            UserRepository userRepository
-    ) {
+            UserRepository userRepository) {
+
         this.cartRepository = cartRepository;
         this.cartItemRepository = cartItemRepository;
         this.productRepository = productRepository;
         this.userRepository = userRepository;
     }
 
-
-
+    @Cacheable(value = "carts", key = "#email")
+    @Transactional(readOnly = true)
     public CartResponse getCart(String email) {
 
-        User user = userRepository.findByEmail(email)
-                .orElseThrow(() ->
-                        new ResourceNotFoundException("User not found")
-                );
+        User user = getUser(email);
 
-        Long userId = user.getId();
-
-        Cart cart = cartRepository.findByUserId(userId)
+        Cart cart = cartRepository
+                .findByUserId(user.getId())
                 .orElseGet(() -> createCart(user));
 
         return mapToResponse(cart);
     }
 
-
-
-
+    @CachePut(value = "carts", key = "#email")
+    @Transactional
     public CartResponse addToCart(
             String email,
-            CartItemRequest request
-    ) {
+            CartItemRequest request) {
 
-        User user = userRepository.findByEmail(email)
-                .orElseThrow(() ->
+        User user = getUser(email);
+
+        Product product =
+                productRepository.findById(
+                        request.getProductId()
+                ).orElseThrow(() ->
                         new ResourceNotFoundException(
-                                "User not found"
+                                "Product not found with id: "
+                                        + request.getProductId()
                         )
                 );
-        Product product = productRepository.findById(
-                request.getProductId()
-        ).orElseThrow(() ->
-                new ResourceNotFoundException(
-                        "Product not found with id: "
-                                + request.getProductId()
-                )
-        );
-        if (request.getQuantity() <= 0) {
-            throw new RuntimeException(
+
+        if (request.getQuantity() == null
+                || request.getQuantity() <= 0) {
+
+            throw new BadRequestException(
                     "Quantity must be greater than 0"
             );
         }
 
-        if (product.getStock() < request.getQuantity()) {
-            throw new BadRequestException(
-                    "Insufficient stock"
-            );
-
-        }
-
-        Long userId = user.getId();
-
-        Cart cart = cartRepository.findByUserId(userId)
+        Cart cart = cartRepository
+                .findByUserId(user.getId())
                 .orElseGet(() -> createCart(user));
 
-        CartItem cartItem = cartItemRepository
-                .findByCartIdAndProductId(
-                        cart.getId(),
-                        product.getId()
-                )
-                .orElse(null);
+        CartItem cartItem =
+                cartItemRepository
+                        .findByCartIdAndProductId(
+                                cart.getId(),
+                                product.getId()
+                        )
+                        .orElse(null);
+
+        int newQuantity =
+                request.getQuantity();
 
         if (cartItem != null) {
 
-            int newQuantity =
+            newQuantity =
                     cartItem.getQuantity()
                             + request.getQuantity();
+        }
 
-            if (newQuantity > product.getStock()) {
-                throw new RuntimeException(
-                        "Insufficient stock"
-                );
-            }
+        if (newQuantity > product.getStock()) {
 
-            cartItem.setQuantity(newQuantity);
+            throw new BadRequestException(
+                    "Insufficient stock"
+            );
+        }
 
-        } else {
+        if (cartItem == null) {
 
             cartItem = new CartItem();
 
             cartItem.setCart(cart);
             cartItem.setProduct(product);
-            cartItem.setQuantity(request.getQuantity());
         }
 
+        cartItem.setQuantity(newQuantity);
+
         cartItemRepository.save(cartItem);
+
+        cart.getItems().clear();
+        cart.getItems().addAll(
+                cartItemRepository.findByCartId(cart.getId())
+        );
 
         return mapToResponse(cart);
     }
 
-
-
-
+    @CachePut(value = "carts", key = "#email")
+    @Transactional
     public CartResponse updateCartItem(
             String email,
             Long itemId,
-            Integer quantity
-    ) {
+            Integer quantity) {
 
-        User user = userRepository.findByEmail(email)
-                .orElseThrow(() ->
-                        new ResourceNotFoundException("User not found")
-                );
+        User user = getUser(email);
 
-        Long userId = user.getId();
+        Cart cart =
+                cartRepository.findByUserId(user.getId())
+                        .orElseThrow(() ->
+                                new ResourceNotFoundException(
+                                        "Cart not found"
+                                )
+                        );
 
-        Cart cart = cartRepository.findByUserId(userId)
-                .orElseThrow(() ->
-                        new RuntimeException("Cart not found")
-                );
+        CartItem cartItem =
+                cartItemRepository.findById(itemId)
+                        .orElseThrow(() ->
+                                new ResourceNotFoundException(
+                                        "Cart item not found"
+                                )
+                        );
 
-        CartItem cartItem = cartItemRepository.findById(itemId)
-                .orElseThrow(() ->
-                        new RuntimeException("Cart item not found")
-                );
-
-        if (!cartItem.getCart().getId().equals(cart.getId())) {
-            throw new RuntimeException(
-                    "Cart item does not belong to this user"
-            );
-        }
+        validateCartItemOwner(cart, cartItem);
 
         if (quantity == null || quantity <= 0) {
-            throw new RuntimeException(
+
+            throw new BadRequestException(
                     "Quantity must be greater than 0"
             );
         }
@@ -172,7 +168,8 @@ public class CartService {
         Product product = cartItem.getProduct();
 
         if (quantity > product.getStock()) {
-            throw new RuntimeException(
+
+            throw new BadRequestException(
                     "Insufficient stock"
             );
         }
@@ -181,68 +178,91 @@ public class CartService {
 
         cartItemRepository.save(cartItem);
 
+        cart.getItems().clear();
+        cart.getItems().addAll(
+                cartItemRepository.findByCartId(cart.getId())
+        );
+
         return mapToResponse(cart);
     }
 
-
-
-
+    @CachePut(value = "carts", key = "#email")
+    @Transactional
     public CartResponse removeFromCart(
             String email,
-            Long itemId
-    ) {
+            Long itemId) {
 
-        User user = userRepository.findByEmail(email)
-                .orElseThrow(() ->
-                        new RuntimeException("User not found")
-                );
+        User user = getUser(email);
 
-        Long userId = user.getId();
+        Cart cart =
+                cartRepository.findByUserId(user.getId())
+                        .orElseThrow(() ->
+                                new ResourceNotFoundException(
+                                        "Cart not found"
+                                )
+                        );
 
-        Cart cart = cartRepository.findByUserId(userId)
-                .orElseThrow(() ->
-                        new RuntimeException("Cart not found")
-                );
+        CartItem cartItem =
+                cartItemRepository.findById(itemId)
+                        .orElseThrow(() ->
+                                new ResourceNotFoundException(
+                                        "Cart item not found"
+                                )
+                        );
 
-        CartItem cartItem = cartItemRepository.findById(itemId)
-                .orElseThrow(() ->
-                        new RuntimeException("Cart item not found")
-                );
-
-        if (!cartItem.getCart().getId().equals(cart.getId())) {
-            throw new RuntimeException(
-                    "Cart item does not belong to this user"
-            );
-        }
+        validateCartItemOwner(cart, cartItem);
 
         cartItemRepository.delete(cartItem);
 
+        cart.getItems().removeIf(
+                item -> item.getId().equals(itemId)
+        );
+
         return mapToResponse(cart);
     }
 
+    @CacheEvict(value = "carts", key = "#email")
+    @Transactional
     public void clearCart(String email) {
 
-        User user = userRepository.findByEmail(email)
-                .orElseThrow(() ->
-                        new RuntimeException("User not found")
-                );
+        User user = getUser(email);
 
-        Long userId = user.getId();
-
-        Cart cart = cartRepository.findByUserId(userId)
-                .orElseThrow(() ->
-                        new RuntimeException("Cart not found")
-                );
+        Cart cart =
+                cartRepository.findByUserId(user.getId())
+                        .orElseThrow(() ->
+                                new ResourceNotFoundException(
+                                        "Cart not found"
+                                )
+                        );
 
         cartItemRepository.deleteAll(cart.getItems());
 
         cart.getItems().clear();
-
-        cartRepository.save(cart);
     }
 
+    private User getUser(String email) {
 
+        return userRepository.findByEmail(email)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException(
+                                "User not found"
+                        )
+                );
+    }
 
+    private void validateCartItemOwner(
+            Cart cart,
+            CartItem cartItem) {
+
+        if (!cartItem.getCart()
+                .getId()
+                .equals(cart.getId())) {
+
+            throw new BadRequestException(
+                    "Cart item does not belong to this user"
+            );
+        }
+    }
 
     private Cart createCart(User user) {
 
@@ -254,24 +274,19 @@ public class CartService {
         return cartRepository.save(cart);
     }
 
-
-
-
     private CartResponse mapToResponse(Cart cart) {
 
         CartResponse response = new CartResponse();
 
         response.setId(cart.getId());
-        response.setUserId((long) cart.getUser().getId());
+        response.setUserId(cart.getUser().getId());
 
-        List<CartItemResponse> items = new ArrayList<>();
+        List<CartItemResponse> items =
+                new ArrayList<>();
 
         BigDecimal total = BigDecimal.ZERO;
 
         for (CartItem item : cart.getItems()) {
-
-            CartItemResponse itemResponse =
-                    new CartItemResponse();
 
             Product product = item.getProduct();
 
@@ -282,6 +297,9 @@ public class CartService {
                                             item.getQuantity()
                                     )
                             );
+
+            CartItemResponse itemResponse =
+                    new CartItemResponse();
 
             itemResponse.setId(item.getId());
             itemResponse.setProductId(product.getId());
